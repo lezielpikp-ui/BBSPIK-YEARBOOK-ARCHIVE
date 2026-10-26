@@ -1,0 +1,58 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 800" width="600" height="800">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#831843"/>
+      <stop offset="60%" stop-color="#4c0519"/>
+      <stop offset="100%" stop-color="#2a020e"/>
+    </linearGradient>
+    <linearGradient id="gold" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#fef08a"/>
+      <stop offset="50%" stop-color="#eab308"/>
+      <stop offset="100%" stop-color="#a16207"/>
+    </linearGradient>
+    <filter id="emboss" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="1" dy="2" stdDeviation="1" flood-color="#000" flood-opacity="0.6"/>
+    </filter>
+  </defs>
+  
+  <!-- Book Cover Texture -->
+  <rect width="600" height="800" rx="8" fill="url(#bg)"/>
+  <!-- Spine groove -->
+  <rect x="0" y="0" width="36" height="800" fill="#000" fill-opacity="0.25"/>
+  <line x1="36" y1="0" x2="36" y2="800" stroke="#fef08a" stroke-width="1.5" stroke-opacity="0.3"/>
+
+  <!-- Ornate Outer Border -->
+  <rect x="56" y="40" width="490" height="720" rx="4" fill="none" stroke="url(#gold)" stroke-width="3"/>
+  <rect x="66" y="50" width="470" height="700" rx="2" fill="none" stroke="url(#gold)" stroke-width="1" stroke-dasharray="6 4"/>
+
+  <!-- Corner Flourishes -->
+  <g stroke="url(#gold)" stroke-width="2" fill="none">
+    <path d="M76 60 L110 60 M76 60 L76 94" />
+    <path d="M526 60 L492 60 M526 60 L526 94" />
+    <path d="M76 740 L110 740 M76 740 L76 706" />
+    <path d="M526 740 L492 740 M526 740 L526 706" />
+  </g>
+
+  <!-- Institution / Subtitle -->
+  <text x="305" y="140" font-family="'Cinzel', Georgia, serif" font-size="16" letter-spacing="6" fill="#fef08a" text-anchor="middle" font-weight="600">ACADEMIA VERITAS ARCHIVE</text>
+  <text x="305" y="165" font-family="'Cinzel', Georgia, serif" font-size="13" letter-spacing="4" fill="#fef08a" text-anchor="middle" fill-opacity="0.8">ESTABLISHED 1924</text>
+
+  <!-- Center Seal / Centenary Emblem -->
+  <g transform="translate(305, 340)" filter="url(#emboss)">
+    <circle cx="0" cy="0" r="95" fill="none" stroke="url(#gold)" stroke-width="3"/>
+    <circle cx="0" cy="0" r="85" fill="#4c0519" stroke="url(#gold)" stroke-width="1.5"/>
+    <polygon points="0,-70 20,-20 70,-20 30,10 45,60 0,30 -45,60 -30,10 -70,-20 -20,-20" fill="url(#gold)" fill-opacity="0.3"/>
+    <text x="0" y="-15" font-family="'Cinzel', Georgia, serif" font-size="16" font-weight="bold" fill="url(#gold)" text-anchor="middle">100 YEARS</text>
+    <text x="0" y="25" font-family="'Cinzel', Georgia, serif" font-size="34" font-weight="900" fill="url(#gold)" text-anchor="middle">1924–2024</text>
+  </g>
+
+  <!-- Main Title -->
+  <text x="305" y="530" font-family="'Cinzel', Georgia, serif" font-size="32" font-weight="800" letter-spacing="3" fill="url(#gold)" text-anchor="middle" filter="url(#emboss)">THE CENTENARY</text>
+  <text x="305" y="575" font-family="'Cinzel', Georgia, serif" font-size="28" font-weight="700" letter-spacing="5" fill="url(#gold)" text-anchor="middle" filter="url(#emboss)">BEACON</text>
+
+  <!-- Edition / Year -->
+  <rect x="200" y="625" width="210" height="36" rx="18" fill="#4c0519" stroke="url(#gold)" stroke-width="1.5"/>
+  <text x="305" y="649" font-family="'Cinzel', Georgia, serif" font-size="15" letter-spacing="4" font-weight="700" fill="#fef08a" text-anchor="middle">CLASS OF 2024</text>
+
+  <text x="305" y="720" font-family="'Playfair Display', Georgia, serif" font-size="13" font-style="italic" fill="#fef08a" fill-opacity="0.85" text-anchor="middle">Official Centennial Commemorative Album</text>
+</svg>

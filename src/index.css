@@ -1,0 +1,83 @@
+@import "tailwindcss";
+
+@layer base {
+  body {
+    font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+    background-color: #f7f5f0;
+    color: #1e293b;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  h1, h2, h3, .font-serif {
+    font-family: 'Cinzel', 'Playfair Display', Georgia, serif;
+  }
+}
+
+/* StPageFlip & Flipbook styles */
+.flipbook-root {
+  perspective: 1800px;
+  transform-style: preserve-3d;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.7);
+  border-radius: 4px;
+}
+
+.flipbook-page {
+  background-color: #fdfbf7;
+  color: #1e293b;
+  box-shadow: inset 0 0 30px rgba(0, 0, 0, 0.05);
+}
+
+.flipbook-page[data-density="hard"] {
+  background-color: #1c1917;
+  color: #fef3c7;
+}
+
+/* Custom warm scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgba(180, 83, 9, 0.05);
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(180, 83, 9, 0.25);
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(180, 83, 9, 0.45);
+}
+
+/* Corner drag & fold affordance */
+.flipbook-page {
+  position: relative;
+  user-select: none;
+}
+
+.flipbook-page::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 24px;
+  height: 24px;
+  background: linear-gradient(135deg, transparent 50%, rgba(217, 119, 6, 0.2) 50%, rgba(217, 119, 6, 0.35) 100%);
+  pointer-events: none;
+  border-bottom-left-radius: 3px;
+  transition: all 0.2s ease-in-out;
+}
+
+.flipbook-page:hover::after {
+  width: 32px;
+  height: 32px;
+  background: linear-gradient(135deg, transparent 50%, rgba(217, 119, 6, 0.35) 50%, rgba(217, 119, 6, 0.5) 100%);
+}
+
+.flipbook-root:active {
+  cursor: grabbing;
+}
+

@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 800" width="600" height="800">
+  <defs>
+    <linearGradient id="bg2020" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0f172a"/>
+      <stop offset="60%" stop-color="#1e293b"/>
+      <stop offset="100%" stop-color="#090d16"/>
+    </linearGradient>
+    <linearGradient id="silver" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ffffff"/>
+      <stop offset="50%" stop-color="#94a3b8"/>
+      <stop offset="100%" stop-color="#cbd5e1"/>
+    </linearGradient>
+    <linearGradient id="cyanAccent" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#38bdf8"/>
+      <stop offset="100%" stop-color="#0284c7"/>
+    </linearGradient>
+  </defs>
+  
+  <rect width="600" height="800" rx="8" fill="url(#bg2020)"/>
+  <rect x="0" y="0" width="36" height="800" fill="#000" fill-opacity="0.3"/>
+  <line x1="36" y1="0" x2="36" y2="800" stroke="#38bdf8" stroke-width="1.5" stroke-opacity="0.5"/>
+
+  <!-- Minimalist Modern Geometry -->
+  <rect x="56" y="40" width="490" height="720" rx="4" fill="none" stroke="url(#silver)" stroke-width="2"/>
+  <line x1="80" y1="200" x2="520" y2="200" stroke="#38bdf8" stroke-width="2"/>
+
+  <text x="300" y="130" font-family="'Cinzel', Georgia, serif" font-size="14" letter-spacing="8" fill="#94a3b8" text-anchor="middle">ST. ANDREWS ARCHIVE</text>
+  <text x="300" y="160" font-family="'Plus Jakarta Sans', sans-serif" font-size="12" letter-spacing="5" fill="#38bdf8" text-anchor="middle" font-weight="bold">ANNUAL HISTORICAL VOLUME</text>
+
+  <!-- Abstract Prism / Hexagon Emblem -->
+  <g transform="translate(300, 360)">
+    <polygon points="0,-90 78,-45 78,45 0,90 -78,45 -78,-45" fill="none" stroke="url(#silver)" stroke-width="3"/>
+    <polygon points="0,-70 60,-35 60,35 0,70 -60,35 -60,-35" fill="#0f172a" stroke="url(#cyanAccent)" stroke-width="2"/>
+    <text x="0" y="15" font-family="'Cinzel', Georgia, serif" font-size="44" font-weight="900" fill="url(#silver)" text-anchor="middle">2020</text>
+  </g>
+
+  <!-- Title -->
+  <text x="300" y="530" font-family="'Cinzel', Georgia, serif" font-size="34" font-weight="800" letter-spacing="4" fill="url(#silver)" text-anchor="middle">ECHOES &amp; HORIZONS</text>
+  <text x="300" y="570" font-family="'Plus Jakarta Sans', sans-serif" font-size="14" font-weight="500" letter-spacing="6" fill="#38bdf8" text-anchor="middle">RESILIENCE IN MOTION</text>
+
+  <rect x="210" y="620" width="180" height="34" rx="6" fill="#1e293b" stroke="url(#silver)" stroke-width="1"/>
+  <text x="300" y="642" font-family="'Cinzel', Georgia, serif" font-size="14" letter-spacing="3" font-weight="700" fill="#f8fafc" text-anchor="middle">SENIOR CLASS</text>
+
+  <text x="300" y="720" font-family="'Playfair Display', Georgia, serif" font-size="13" font-style="italic" fill="#64748b" text-anchor="middle">"Through distant screens and unbroken spirit."</text>
+</svg>

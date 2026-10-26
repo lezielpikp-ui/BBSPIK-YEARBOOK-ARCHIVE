@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 800" width="600" height="800">
+  <defs>
+    <linearGradient id="bg1985" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#064e3b"/>
+      <stop offset="60%" stop-color="#022c22"/>
+      <stop offset="100%" stop-color="#011611"/>
+    </linearGradient>
+    <linearGradient id="retroGold" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#fef08a"/>
+      <stop offset="50%" stop-color="#f59e0b"/>
+      <stop offset="100%" stop-color="#b45309"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="600" height="800" rx="8" fill="url(#bg1985)"/>
+  <rect x="0" y="0" width="36" height="800" fill="#000" fill-opacity="0.3"/>
+  <line x1="36" y1="0" x2="36" y2="800" stroke="#f59e0b" stroke-width="2" stroke-opacity="0.4"/>
+
+  <!-- Ornate Vintage 80s Ivy Border -->
+  <rect x="56" y="44" width="490" height="712" rx="4" fill="none" stroke="url(#retroGold)" stroke-width="3"/>
+  <rect x="66" y="54" width="470" height="692" rx="2" fill="none" stroke="url(#retroGold)" stroke-width="1"/>
+
+  <text x="300" y="140" font-family="'Cinzel', Georgia, serif" font-size="15" letter-spacing="6" fill="#fef08a" text-anchor="middle">LINCOLN HIGH SCHOOL</text>
+  <text x="300" y="170" font-family="'Cinzel', Georgia, serif" font-size="12" letter-spacing="4" fill="#a7f3d0" text-anchor="middle">ANNUAL RECORD</text>
+
+  <!-- Crest with Laurel Branches -->
+  <g transform="translate(300, 340)">
+    <circle cx="0" cy="0" r="85" fill="#064e3b" stroke="url(#retroGold)" stroke-width="3"/>
+    <path d="M-60 20 Q -75 -40, -35 -65 Q -50 -20, -25 10 Z" fill="url(#retroGold)"/>
+    <path d="M60 20 Q 75 -40, 35 -65 Q 50 -20, 25 10 Z" fill="url(#retroGold)"/>
+    <text x="0" y="18" font-family="'Cinzel', Georgia, serif" font-size="52" font-weight="900" fill="url(#retroGold)" text-anchor="middle">’85</text>
+  </g>
+
+  <!-- Title -->
+  <text x="300" y="510" font-family="'Cinzel', Georgia, serif" font-size="34" font-weight="800" letter-spacing="4" fill="url(#retroGold)" text-anchor="middle">GOLDEN ECHOES</text>
+  <text x="300" y="555" font-family="'Playfair Display', Georgia, serif" font-size="18" font-style="italic" fill="#fde68a" text-anchor="middle">Volume LXI</text>
+
+  <rect x="200" y="615" width="200" height="36" rx="6" fill="#022c22" stroke="url(#retroGold)" stroke-width="1.5"/>
+  <text x="300" y="639" font-family="'Cinzel', Georgia, serif" font-size="15" letter-spacing="4" font-weight="700" fill="#fef08a" text-anchor="middle">YEARBOOK 1985</text>
+</svg>

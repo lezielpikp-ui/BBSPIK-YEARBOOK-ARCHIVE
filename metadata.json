@@ -1,0 +1,6 @@
+{
+  "name": "Bina Bangsa School-Pantai Indah Kapuk Yearbook Archive",
+  "description": "Official interactive yearbook archive of Bina Bangsa School Pantai Indah Kapuk (BBS PIK), featuring realistic page-flip book experience in landscape mode, automatic Google Drive sync, and offline PWA capability.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
