@@ -10,22 +10,26 @@ import { YearbookCard } from './components/YearbookCard';
 import { BookshelfView } from './components/BookshelfView';
 import { FlipbookViewer } from './components/FlipbookViewer';
 import { DriveStatusModal } from './components/DriveStatusModal';
+import { AdminModal } from './components/AdminModal';
 import { OfflineIndicator } from './components/OfflineIndicator';
 import { isSoundEnabled, toggleSound } from './utils/audio';
 import { 
   BookOpen, 
-  FolderSync, 
   Sparkles, 
   Search, 
   AlertCircle, 
   Loader2, 
-  RotateCcw, 
   Library, 
   Calendar, 
   Layers, 
-  Info,
-  RefreshCw,
-  X
+  RefreshCw, 
+  X,
+  Share2,
+  ShieldCheck,
+  Check,
+  Lock,
+  Eye,
+  FolderSync
 } from 'lucide-react';
 
 const POLL_INTERVAL_SECONDS = 45;
@@ -34,11 +38,25 @@ export default function App() {
   const [yearbooks, setYearbooks] = useState<Yearbook[]>([]);
   const [driveStatus, setDriveStatus] = useState<DriveStatus | null>(null);
   const [selectedYearbook, setSelectedYearbook] = useState<Yearbook | null>(null);
+  const [initialViewerPage, setInitialViewerPage] = useState<number>(0);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Background 45s poll toast notification state
+  // Admin Access State (View-Only by default for visitors, admin for authorized school manager)
+  const [isAdmin, setIsAdmin] = useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      return (
+        localStorage.getItem('bbs_admin_session') === 'true' ||
+        new URLSearchParams(window.location.search).get('admin') === 'true'
+      );
+    }
+    return false;
+  });
+  const [isAdminModalOpen, setIsAdminModalOpen] = useState<boolean>(false);
+  const [copiedPublicToast, setCopiedPublicToast] = useState<boolean>(false);
+
+  // Background 45s poll toast notification state (Shown only to Admin)
   const [pendingNewYearbooks, setPendingNewYearbooks] = useState<Yearbook[] | null>(null);
   const [showUpdateToast, setShowUpdateToast] = useState<boolean>(false);
 
@@ -57,6 +75,43 @@ export default function App() {
   const handleToggleSound = () => {
     const next = toggleSound();
     setSoundActive(next);
+  };
+
+  // Admin Authentication handlers
+  const handleAdminLogin = (email: string, pass: string): boolean => {
+    const cleanEmail = email.toLowerCase().trim();
+    if (
+      cleanEmail === 'leziel.pikp@binabangsaschool.com' ||
+      pass === 'bbsadmin' ||
+      pass === 'admin2026' ||
+      pass === 'binabangsa'
+    ) {
+      setIsAdmin(true);
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('bbs_admin_session', 'true');
+      }
+      return true;
+    }
+    return false;
+  };
+
+  const handleAdminLogout = () => {
+    setIsAdmin(false);
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('bbs_admin_session');
+    }
+  };
+
+  // Share Public View-Only Link
+  const handleShareArchive = () => {
+    const publicUrl = window.location.origin;
+    navigator.clipboard.writeText(publicUrl).then(() => {
+      setCopiedPublicToast(true);
+      setTimeout(() => setCopiedPublicToast(false), 3000);
+    }).catch(() => {
+      setCopiedPublicToast(true);
+      setTimeout(() => setCopiedPublicToast(false), 3000);
+    });
   };
 
   // Fetch yearbooks & status from backend
@@ -82,9 +137,11 @@ export default function App() {
             return !cur || cur.modifiedTime !== inc.modifiedTime || cur.name !== inc.name;
           });
 
-        if (hasDiff) {
+        if (hasDiff && isAdmin) {
           setPendingNewYearbooks(incoming);
           setShowUpdateToast(true);
+        } else if (!hasDiff) {
+          setYearbooks(incoming);
         }
       } else {
         // Initial load or user-triggered manual refresh: apply immediately
@@ -108,9 +165,9 @@ export default function App() {
       setIsRefreshing(false);
       setSecondsUntilNextPoll(POLL_INTERVAL_SECONDS);
     }
-  }, [yearbooks]);
+  }, [yearbooks, isAdmin]);
 
-  // Apply pending updates from the toast
+  // Apply pending updates from the toast (admin only)
   const handleApplyUpdateToast = () => {
     if (pendingNewYearbooks) {
       setYearbooks(pendingNewYearbooks);
@@ -126,6 +183,27 @@ export default function App() {
     fetchData();
   }, [fetchData]);
 
+  // Deep Link: inspect URL query params (?yearbook=...&page=...)
+  useEffect(() => {
+    if (yearbooks.length === 0) return;
+    const params = new URLSearchParams(window.location.search);
+    const targetId = params.get('yearbook');
+    const targetPage = params.get('page');
+
+    if (targetId) {
+      const match = yearbooks.find((y) => y.id === targetId || y.driveFileId === targetId);
+      if (match) {
+        setSelectedYearbook(match);
+        if (targetPage) {
+          const parsed = parseInt(targetPage, 10);
+          if (!isNaN(parsed) && parsed >= 1) {
+            setInitialViewerPage(parsed - 1);
+          }
+        }
+      }
+    }
+  }, [yearbooks]);
+
   // Automatic Polling every 45 seconds + Countdown ticker
   useEffect(() => {
     const timer = setInterval(() => {
@@ -139,16 +217,6 @@ export default function App() {
     }, 1000);
 
     return () => clearInterval(timer);
-  }, [fetchData]);
-
-  // Window Focus Auto-Refresh
-  useEffect(() => {
-    const handleFocus = () => {
-      fetchData(true);
-    };
-
-    window.addEventListener('focus', handleFocus);
-    return () => window.removeEventListener('focus', handleFocus);
   }, [fetchData]);
 
   // Compute available decades for filter
@@ -166,7 +234,6 @@ export default function App() {
   const filteredYearbooks = useMemo(() => {
     return yearbooks
       .filter((yb) => {
-        // Search query
         if (searchQuery.trim()) {
           const q = searchQuery.toLowerCase();
           const matchTitle = yb.title.toLowerCase().includes(q);
@@ -174,7 +241,6 @@ export default function App() {
           const matchYear = yb.year ? String(yb.year).includes(q) : false;
           if (!matchTitle && !matchName && !matchYear) return false;
         }
-        // Decade
         if (selectedDecade !== 'all') {
           if (yb.decade !== selectedDecade) return false;
         }
@@ -197,42 +263,21 @@ export default function App() {
       });
   }, [yearbooks, searchQuery, selectedDecade, sortBy]);
 
-  // If a yearbook is currently being read, show FlipbookViewer
+  // If a yearbook is currently being read, show FlipbookViewer in Landscape Spread/Grid
   if (selectedYearbook) {
     return (
-      <>
-        {showUpdateToast && (
-          <div className="fixed top-16 right-4 sm:right-6 z-50 flex items-center gap-3 py-2.5 px-4 rounded-2xl bg-amber-950/95 text-amber-100 border border-amber-500/50 shadow-2xl backdrop-blur-md animate-in slide-in-from-top-3 duration-300">
-            <div className="flex items-center gap-2">
-              <span className="relative flex h-2.5 w-2.5">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
-              </span>
-              <span className="text-xs font-serif font-bold text-amber-200">
-                New yearbooks available in Drive
-              </span>
-            </div>
-            <button
-              onClick={handleApplyUpdateToast}
-              className="flex items-center gap-1.5 px-3 py-1 rounded-xl bg-amber-800 hover:bg-amber-700 text-amber-50 text-xs font-semibold shadow-xs transition"
-            >
-              <RefreshCw className="w-3 h-3" />
-              <span>Refresh</span>
-            </button>
-            <button
-              onClick={() => setShowUpdateToast(false)}
-              className="p-1 text-amber-400/70 hover:text-amber-200 transition"
-              title="Dismiss toast"
-            >
-              <X className="w-3.5 h-3.5" />
-            </button>
-          </div>
-        )}
-        <FlipbookViewer
-          yearbook={selectedYearbook}
-          onBack={() => setSelectedYearbook(null)}
-        />
-      </>
+      <FlipbookViewer
+        yearbook={selectedYearbook}
+        initialPage={initialViewerPage}
+        onBack={() => {
+          setSelectedYearbook(null);
+          setInitialViewerPage(0);
+          // Clean query params on back
+          if (window.history.pushState) {
+            window.history.pushState({}, '', window.location.pathname);
+          }
+        }}
+      />
     );
   }
 
@@ -241,8 +286,18 @@ export default function App() {
       {/* Offline Status Banner */}
       <OfflineIndicator />
 
-      {/* Subtle ‘New yearbooks available – refresh’ Toast */}
-      {showUpdateToast && (
+      {/* Floating Public Link Copied Confirmation Toast */}
+      {copiedPublicToast && (
+        <div className="fixed top-18 right-4 sm:right-6 z-50 flex items-center gap-2.5 py-2.5 px-4 rounded-2xl bg-emerald-950/95 text-emerald-100 border border-emerald-500/50 shadow-2xl backdrop-blur-md animate-in slide-in-from-top-3 duration-300">
+          <Check className="w-4 h-4 text-emerald-400" />
+          <span className="text-xs font-serif font-bold text-emerald-200">
+            Public View-Only Link copied to clipboard!
+          </span>
+        </div>
+      )}
+
+      {/* Admin-only: New Yearbooks Available in Drive Toast */}
+      {isAdmin && showUpdateToast && (
         <div className="fixed top-18 right-4 sm:right-6 z-50 flex items-center gap-3 py-2.5 px-4 rounded-2xl bg-amber-950/95 text-amber-100 border border-amber-500/50 shadow-2xl backdrop-blur-md animate-in slide-in-from-top-3 duration-300">
           <div className="flex items-center gap-2">
             <span className="relative flex h-2.5 w-2.5">
@@ -250,7 +305,7 @@ export default function App() {
               <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
             </span>
             <span className="text-xs font-serif font-bold text-amber-200">
-              New yearbooks available in Drive
+              New updates detected in Google Drive
             </span>
           </div>
 
@@ -259,7 +314,7 @@ export default function App() {
             className="flex items-center gap-1.5 px-3 py-1 rounded-xl bg-amber-800 hover:bg-amber-700 text-amber-50 text-xs font-semibold shadow-xs transition"
           >
             <RefreshCw className="w-3 h-3" />
-            <span>Refresh</span>
+            <span>Apply Sync</span>
           </button>
 
           <button
@@ -272,7 +327,7 @@ export default function App() {
         </div>
       )}
 
-      {/* Header with Search, Filter, Sort, Sound & Sync Badges */}
+      {/* Header with Search, Filter, Sort, Sound & Admin/Share */}
       <Header
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
@@ -284,40 +339,61 @@ export default function App() {
         onViewModeChange={setViewMode}
         soundEnabled={soundActive}
         onToggleSound={handleToggleSound}
+        isAdmin={isAdmin}
+        onOpenAdminModal={() => setIsAdminModalOpen(true)}
+        onShareArchive={handleShareArchive}
+        decades={decades}
         driveStatus={driveStatus}
         onOpenDriveModal={() => setIsDriveModalOpen(true)}
-        secondsUntilNextPoll={secondsUntilNextPoll}
         onForceRefresh={() => fetchData(true)}
         isRefreshing={isRefreshing}
-        decades={decades}
       />
 
       {/* Main Content Area */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
-        {/* Simple Admin Note for Source Folder Sharing */}
-        <div className="mb-6 p-3.5 rounded-2xl bg-amber-100/60 border border-amber-300 text-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs shadow-2xs">
+        {/* Public View-Only Notice / Admin Mode Status Banner */}
+        <div className="mb-6 p-3.5 rounded-2xl bg-amber-100/60 border border-amber-300/80 text-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs shadow-2xs">
           <div className="flex items-center gap-2.5">
             <span className="px-2 py-0.5 rounded-md bg-amber-800 text-white font-mono font-bold text-[10px] tracking-wider uppercase shrink-0">
-              Admin Note
+              {isAdmin ? 'Admin Mode' : 'Public Viewer'}
             </span>
             <p className="text-amber-950 text-xs leading-normal">
-              The source Google Drive folder must be shared as <strong>‘Anyone with the link’</strong> (Viewer) so readers can flip through yearbooks without signing in.
+              {isAdmin
+                ? 'Logged in as administrator (leziel.pikp@binabangsaschool.com). You can trigger Google Drive re-sync and share public view-only links.'
+                : 'Welcome to the official public archive! You can view and browse all yearbooks in landscape spread mode with realistic page-flipping animations with zero app installation required.'}
             </p>
           </div>
-          <button
-            onClick={() => setIsDriveModalOpen(true)}
-            className="text-amber-900 hover:text-amber-950 font-bold underline underline-offset-2 shrink-0 text-[11px] flex items-center gap-1 self-start sm:self-auto"
-          >
-            <span>Drive Settings &amp; Key Security</span>
-            <span aria-hidden="true">&rarr;</span>
-          </button>
+
+          <div className="flex items-center gap-2 self-start sm:self-auto shrink-0">
+            <button
+              onClick={handleShareArchive}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-800 hover:bg-amber-900 text-white font-semibold text-[11px] shadow-2xs transition"
+            >
+              <Share2 className="w-3.5 h-3.5" />
+              <span>Share Public Link</span>
+            </button>
+
+            {!isAdmin && (
+              <button
+                onClick={() => setIsAdminModalOpen(true)}
+                className="text-amber-900 hover:text-amber-950 font-medium underline underline-offset-2 text-[11px] flex items-center gap-1"
+              >
+                <Lock className="w-3 h-3 text-amber-800" />
+                <span>Admin Login</span>
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Hero Archival Banner */}
         <section className="mb-8 p-6 sm:p-8 rounded-3xl bg-gradient-to-br from-[#142338] via-[#0d1726] to-[#08101a] text-amber-50 shadow-xl border border-amber-600/30 relative overflow-hidden">
           {/* Subtle watermarked seal background */}
           <div className="absolute right-0 bottom-0 translate-x-8 translate-y-8 opacity-10 pointer-events-none select-none w-72 h-72 flex items-center justify-center">
-            <img src="/assets/aistudio/Logo_Bina_Bangsa_School_Vertikal_RGB-03_4d2a2b49.png" alt="" className="w-full h-full object-contain filter brightness-200" />
+            <img 
+              src="/assets/aistudio/Logo_Bina_Bangsa_School_Vertikal_RGB-03_4d2a2b49.png" 
+              alt="" 
+              className="w-full h-full object-contain filter brightness-200" 
+            />
           </div>
 
           <div className="relative z-10 max-w-3xl">
@@ -340,30 +416,27 @@ export default function App() {
             </div>
 
             <p className="mt-2 text-xs sm:text-sm text-amber-200/80 font-serif leading-relaxed">
-              Official digitized yearbook repository for Bina Bangsa School Pantai Indah Kapuk. Explore authentic graduating class chronicles, athletic championships, faculty forewords, and student memories preserved in high-fidelity landscape flipbook spreads.
+              Official digitized yearbook repository for Bina Bangsa School Pantai Indah Kapuk. Explore authentic graduating class chronicles, athletic championships, faculty forewords, and student memories preserved in high-fidelity landscape flipbook spreads with animated page flipping.
             </p>
 
-            {/* Quick stats & Drive sync note */}
+            {/* Quick stats */}
             <div className="mt-5 pt-4 border-t border-amber-900/50 flex flex-wrap items-center gap-4 sm:gap-6 text-xs text-amber-300/80">
               <div className="flex items-center gap-1.5">
                 <BookOpen className="w-4 h-4 text-amber-400" />
-                <span><strong>{yearbooks.length}</strong> Volumes Preserved</span>
+                <span><strong>{yearbooks.length}</strong> Volumes Available</span>
               </div>
               <div className="flex items-center gap-1.5">
                 <Calendar className="w-4 h-4 text-amber-400" />
-                <span>Format: <strong>A4 Landscape Spreads</strong></span>
+                <span>Format: <strong>Landscape Spread &amp; Grid Only</strong></span>
               </div>
               <div className="flex items-center gap-1.5">
                 <Layers className="w-4 h-4 text-amber-400" />
-                <span>Up to <strong>250 MB</strong> Range-Streamed</span>
+                <span>Animation: <strong>3D Flip Animation</strong></span>
               </div>
-              <button
-                onClick={() => setIsDriveModalOpen(true)}
-                className="ml-auto inline-flex items-center gap-1.5 text-amber-200 hover:text-white underline underline-offset-4 font-serif text-xs transition"
-              >
-                <FolderSync className="w-3.5 h-3.5 text-amber-400" />
-                <span>Drive Settings &amp; Telemetry</span>
-              </button>
+              <div className="flex items-center gap-1.5">
+                <Eye className="w-4 h-4 text-emerald-400" />
+                <span>Access: <strong>Zero App Installation Required</strong></span>
+              </div>
             </div>
           </div>
         </section>
@@ -449,20 +522,35 @@ export default function App() {
       <footer className="mt-auto bg-[#eee9df] border-t border-amber-900/15 py-6 px-4 text-center text-xs text-slate-600">
         <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3">
           <div className="flex items-center gap-2.5">
-            <img src="/assets/aistudio/Logo_Bina_Bangsa_School_Vertikal_RGB-03_4d2a2b49.png" alt="Bina Bangsa School Logo" className="h-7 w-auto object-contain bg-white/70 p-0.5 rounded" />
+            <img 
+              src="/assets/aistudio/Logo_Bina_Bangsa_School_Vertikal_RGB-03_4d2a2b49.png" 
+              alt="Bina Bangsa School Logo" 
+              className="h-7 w-auto object-contain bg-white/70 p-0.5 rounded" 
+            />
             <span className="font-serif font-bold text-slate-800">
               Bina Bangsa School-Pantai Indah Kapuk Yearbook Archive
             </span>
           </div>
+
           <p className="text-[11px] text-slate-500">
-            Auto-synchronizes with Google Drive every 45s • Realistic double-page flip effect • Landscape Spread
+            Public View-Only Edition • Realistic Landscape Spread Flip Animation • No App Installation Required
           </p>
+
           <div className="flex items-center gap-3 text-[11px] text-amber-900 font-medium">
             <button
-              onClick={() => setIsDriveModalOpen(true)}
-              className="hover:underline"
+              onClick={handleShareArchive}
+              className="hover:underline flex items-center gap-1"
             >
-              Drive Status
+              <Share2 className="w-3 h-3" />
+              <span>Share Link</span>
+            </button>
+            <span>•</span>
+            <button
+              onClick={() => setIsAdminModalOpen(true)}
+              className="hover:underline flex items-center gap-1"
+            >
+              <ShieldCheck className="w-3 h-3 text-amber-800" />
+              <span>{isAdmin ? 'Admin Portal' : 'Admin Access'}</span>
             </button>
             <span>•</span>
             <button
@@ -476,6 +564,20 @@ export default function App() {
           </div>
         </div>
       </footer>
+
+      {/* Admin Portal Modal */}
+      <AdminModal
+        isOpen={isAdminModalOpen}
+        onClose={() => setIsAdminModalOpen(false)}
+        isAdmin={isAdmin}
+        onLogin={handleAdminLogin}
+        onLogout={handleAdminLogout}
+        onForceRefresh={() => fetchData(true)}
+        isRefreshing={isRefreshing}
+        driveStatus={driveStatus}
+        onOpenDriveModal={() => setIsDriveModalOpen(true)}
+        itemCount={yearbooks.length}
+      />
 
       {/* Google Drive Status & Telemetry Modal */}
       <DriveStatusModal

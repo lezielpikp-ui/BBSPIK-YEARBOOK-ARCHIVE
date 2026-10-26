@@ -21,49 +21,52 @@ import {
   Bookmark, 
   X,
   LayoutGrid,
-  BookOpen,
   Columns,
-  Sparkles,
-  Search,
-  Eye
+  Share2,
+  Check,
+  Eye,
+  Sparkles
 } from 'lucide-react';
 
 interface FlipbookViewerProps {
   yearbook: Yearbook;
   onBack: () => void;
+  initialPage?: number;
 }
 
-type ViewerMode = 'page' | 'spread' | 'flipbook' | 'grid';
+// User Requirement: Navigation should be 'spread' and 'grid' ONLY
+type ViewerMode = 'spread' | 'grid';
 
-export const FlipbookViewer: React.FC<FlipbookViewerProps> = ({ yearbook, onBack }) => {
+export const FlipbookViewer: React.FC<FlipbookViewerProps> = ({ 
+  yearbook, 
+  onBack,
+  initialPage = 0 
+}) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const bookElementRef = useRef<HTMLDivElement>(null);
   const pageFlipRef = useRef<any>(null);
-  const thumbnailStripRef = useRef<HTMLDivElement>(null);
-
-  // Loaded PDF instance reference
   const pdfInstanceRef = useRef<LoadedPdf | null>(null);
 
-  // Viewing State
-  const [viewerMode, setViewerMode] = useState<ViewerMode>('page');
-  const [currentPage, setCurrentPage] = useState<number>(0); // 0-indexed
+  // Viewing State - Only spread and grid
+  const [viewerMode, setViewerMode] = useState<ViewerMode>('spread');
+  const [currentPage, setCurrentPage] = useState<number>(initialPage); // 0-indexed
   const [totalPages, setTotalPages] = useState<number>(yearbook.pageCount || 10);
   const [pageAspectRatio, setPageAspectRatio] = useState<number>(1.406); // 738/525 ~ 1.406
   const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
   const [zoomLevel, setZoomLevel] = useState<number>(1);
   const [soundActive, setSoundActive] = useState<boolean>(isSoundEnabled());
   const [isTocOpen, setIsTocOpen] = useState<boolean>(false);
-  const [showThumbnails, setShowThumbnails] = useState<boolean>(true);
-  const [jumpPageInput, setJumpPageInput] = useState<string>('1');
+  const [jumpPageInput, setJumpPageInput] = useState<string>(String(initialPage + 1));
+  const [copiedShare, setCopiedShare] = useState<boolean>(false);
 
   // PDF Streaming & Progressive Rendering
   const [isLoadingPdf, setIsLoadingPdf] = useState<boolean>(false);
   const [pdfProgress, setPdfProgress] = useState<PdfLoadProgress | null>(null);
   const [pdfPages, setPdfPages] = useState<Record<number, string>>({}); // 1-indexed high-res
   const [pdfThumbnails, setPdfThumbnails] = useState<Record<number, string>>({}); // 1-indexed low-res
-  const [renderingPages, setRenderingPages] = useState<Record<number, boolean>>({});
   const [pdfError, setPdfError] = useState<string | null>(null);
   const [retryCount, setRetryCount] = useState<number>(0);
+  const [isFlipReady, setIsFlipReady] = useState<boolean>(false);
 
   // Sample pages if sample yearbook
   const samplePages: SamplePageData[] = useMemo(() => {
@@ -105,34 +108,66 @@ export const FlipbookViewer: React.FC<FlipbookViewerProps> = ({ yearbook, onBack
   const handleZoomOut = () => setZoomLevel((prev) => Math.max(prev - 0.25, 0.75));
   const handleZoomReset = () => setZoomLevel(1);
 
-  // Render on-demand PDF page
-  const requestPageRender = useCallback(async (pageNum: number, isThumbnail = false) => {
+  // Share public link for this specific yearbook and page
+  const handleShare = () => {
+    const origin = window.location.origin;
+    const shareUrl = `${origin}?yearbook=${encodeURIComponent(yearbook.id)}&page=${currentPage + 1}`;
+    navigator.clipboard.writeText(shareUrl).then(() => {
+      setCopiedShare(true);
+      setTimeout(() => setCopiedShare(false), 2500);
+    }).catch(() => {
+      setCopiedShare(true);
+      setTimeout(() => setCopiedShare(false), 2500);
+    });
+  };
+
+  // Direct DOM image updater to keep StPageFlip in sync without destructive re-init
+  const updatePageImageInDOM = useCallback((pageNum: number, dataUrl: string) => {
+    if (!bookElementRef.current) return;
+    const imgEl = bookElementRef.current.querySelector<HTMLImageElement>(`img[data-page-img="${pageNum}"]`);
+    if (imgEl && imgEl.src !== dataUrl) {
+      imgEl.src = dataUrl;
+      imgEl.classList.remove('opacity-0');
+      imgEl.classList.add('opacity-100');
+    }
+    const placeholder = bookElementRef.current.querySelector<HTMLElement>(`[data-loader-page="${pageNum}"]`);
+    if (placeholder) {
+      placeholder.style.display = 'none';
+    }
+  }, []);
+
+  // Request on-demand rendering of a PDF page
+  const renderPdfPage = useCallback(async (pageNum: number) => {
     const pdf = pdfInstanceRef.current;
     if (!pdf || pageNum < 1 || pageNum > pdf.numPages) return;
 
-    if (isThumbnail) {
-      if (pdfThumbnails[pageNum]) return;
-      try {
-        const thumbUrl = await pdf.getPageThumbnail(pageNum);
-        setPdfThumbnails((prev) => ({ ...prev, [pageNum]: thumbUrl }));
-      } catch (e) {
-        console.warn(`Thumbnail render notice for page ${pageNum}:`, e);
-      }
+    if (pdfPages[pageNum]) {
+      updatePageImageInDOM(pageNum, pdfPages[pageNum]);
       return;
     }
 
-    if (pdfPages[pageNum] || renderingPages[pageNum]) return;
-
-    setRenderingPages((prev) => ({ ...prev, [pageNum]: true }));
     try {
       const dataUrl = await pdf.renderPage(pageNum, 1.8);
       setPdfPages((prev) => ({ ...prev, [pageNum]: dataUrl }));
+      updatePageImageInDOM(pageNum, dataUrl);
     } catch (err) {
       console.warn(`Page render notice for page ${pageNum}:`, err);
-    } finally {
-      setRenderingPages((prev) => ({ ...prev, [pageNum]: false }));
     }
-  }, [pdfPages, pdfThumbnails, renderingPages]);
+  }, [pdfPages, updatePageImageInDOM]);
+
+  // Request thumbnail for Grid mode
+  const renderThumbnail = useCallback(async (pageNum: number) => {
+    const pdf = pdfInstanceRef.current;
+    if (!pdf || pageNum < 1 || pageNum > pdf.numPages) return;
+    if (pdfThumbnails[pageNum]) return;
+
+    try {
+      const thumb = await pdf.getPageThumbnail(pageNum);
+      setPdfThumbnails((prev) => ({ ...prev, [pageNum]: thumb }));
+    } catch (e) {
+      console.warn(`Thumbnail notice for page ${pageNum}:`, e);
+    }
+  }, [pdfThumbnails]);
 
   // Load PDF if yearbook is PDF from Drive
   useEffect(() => {
@@ -153,27 +188,43 @@ export const FlipbookViewer: React.FC<FlipbookViewerProps> = ({ yearbook, onBack
             setPageAspectRatio(pdf.aspectRatio);
           }
 
-          // Immediately render current page (page 1)
+          // Render first 4 pages immediately for instant initial spread viewing
           try {
             const p1 = await pdf.renderPage(1, 1.8);
             if (!isCancelled) {
               setPdfPages((prev) => ({ ...prev, 1: p1 }));
-              setIsLoadingPdf(false);
+              updatePageImageInDOM(1, p1);
             }
           } catch (p1Err) {
             console.error('Failed to render page 1:', p1Err);
-            if (!isCancelled) setIsLoadingPdf(false);
           }
 
-          // Pre-render page 2 and initial thumbnails in background
-          if (!isCancelled && pdf.numPages >= 2) {
-            pdf.renderPage(2, 1.8).then((p2) => {
-              if (!isCancelled) setPdfPages((prev) => ({ ...prev, 2: p2 }));
+          if (pdf.numPages >= 2) {
+            try {
+              const p2 = await pdf.renderPage(2, 1.8);
+              if (!isCancelled) {
+                setPdfPages((prev) => ({ ...prev, 2: p2 }));
+                updatePageImageInDOM(2, p2);
+              }
+            } catch (e) {}
+          }
+
+          if (pdf.numPages >= 3) {
+            pdf.renderPage(3, 1.8).then((p3) => {
+              if (!isCancelled) {
+                setPdfPages((prev) => ({ ...prev, 3: p3 }));
+                updatePageImageInDOM(3, p3);
+              }
             });
           }
 
-          // Preload first 8 thumbnails for the thumbnail strip
-          for (let p = 1; p <= Math.min(pdf.numPages, 10); p++) {
+          if (!isCancelled) {
+            setIsLoadingPdf(false);
+            setIsFlipReady(true);
+          }
+
+          // Preload initial thumbnails for Grid mode
+          for (let p = 1; p <= Math.min(pdf.numPages, 12); p++) {
             if (isCancelled) break;
             pdf.getPageThumbnail(p).then((thumb) => {
               if (!isCancelled) {
@@ -189,6 +240,8 @@ export const FlipbookViewer: React.FC<FlipbookViewerProps> = ({ yearbook, onBack
             setIsLoadingPdf(false);
           }
         });
+    } else {
+      setIsFlipReady(true);
     }
 
     return () => {
@@ -198,137 +251,24 @@ export const FlipbookViewer: React.FC<FlipbookViewerProps> = ({ yearbook, onBack
         pdfInstanceRef.current = null;
       }
     };
-  }, [yearbook, retryCount]);
+  }, [yearbook, retryCount, updatePageImageInDOM]);
 
-  // Keep surrounding pages rendered in background whenever currentPage changes
+  // Keep adjacent pages rendered whenever currentPage changes
   useEffect(() => {
-    const pageNum = currentPage + 1; // 1-indexed
-    // Current page
-    requestPageRender(pageNum);
-    // Next page
-    if (pageNum + 1 <= totalPages) {
-      requestPageRender(pageNum + 1);
-    }
-    // Spread mode second page
-    if (viewerMode === 'spread' && pageNum + 2 <= totalPages) {
-      requestPageRender(pageNum + 2);
-    }
-    // Previous page
-    if (pageNum - 1 >= 1) {
-      requestPageRender(pageNum - 1);
-    }
-    // Preload thumbnails around current page
-    for (let p = Math.max(1, pageNum - 4); p <= Math.min(totalPages, pageNum + 6); p++) {
-      requestPageRender(p, true);
-    }
-  }, [currentPage, totalPages, viewerMode, requestPageRender]);
+    const p = currentPage + 1;
+    renderPdfPage(p);
+    renderPdfPage(p + 1);
+    if (p + 2 <= totalPages) renderPdfPage(p + 2);
+    if (p + 3 <= totalPages) renderPdfPage(p + 3);
+    if (p - 1 >= 1) renderPdfPage(p - 1);
+    if (p - 2 >= 1) renderPdfPage(p - 2);
+  }, [currentPage, totalPages, renderPdfPage]);
 
-  // Auto-scroll thumbnail strip to center current page
+  // Initialize PageFlip instance with realistic 3D flipping animation
   useEffect(() => {
-    if (thumbnailStripRef.current) {
-      const activeThumb = thumbnailStripRef.current.querySelector<HTMLElement>(`[data-thumb-page="${currentPage}"]`);
-      if (activeThumb) {
-        activeThumb.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
-      }
-    }
-  }, [currentPage, showThumbnails]);
+    if (viewerMode !== 'spread' || !isFlipReady) return;
 
-  // Navigation handlers
-  const goToPage = useCallback((targetIndex: number) => {
-    const safeTarget = Math.max(0, Math.min(totalPages - 1, targetIndex));
-    setCurrentPage(safeTarget);
-    if (soundActive) playPageTurnSound();
-  }, [totalPages, soundActive]);
-
-  const flipPrev = useCallback(() => {
-    if (currentPage > 0) {
-      const step = viewerMode === 'spread' ? 2 : 1;
-      goToPage(Math.max(0, currentPage - step));
-    }
-  }, [currentPage, viewerMode, goToPage]);
-
-  const flipNext = useCallback(() => {
-    if (currentPage < totalPages - 1) {
-      const step = viewerMode === 'spread' ? 2 : 1;
-      goToPage(Math.min(totalPages - 1, currentPage + step));
-    }
-  }, [currentPage, totalPages, viewerMode, goToPage]);
-
-  // Keyboard navigation
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.target instanceof HTMLInputElement) return;
-
-      if (e.key === 'ArrowRight' || e.key === 'PageDown' || e.key === ' ') {
-        e.preventDefault();
-        flipNext();
-      } else if (e.key === 'ArrowLeft' || e.key === 'PageUp') {
-        e.preventDefault();
-        flipPrev();
-      } else if (e.key === 'Home') {
-        e.preventDefault();
-        goToPage(0);
-      } else if (e.key === 'End') {
-        e.preventDefault();
-        goToPage(totalPages - 1);
-      } else if (e.key === 'Escape') {
-        if (isTocOpen) setIsTocOpen(false);
-        if (viewerMode === 'grid') setViewerMode('page');
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [flipNext, flipPrev, goToPage, totalPages, isTocOpen, viewerMode]);
-
-  // Touch Swipe Handlers
-  const touchStartX = useRef<number | null>(null);
-  const touchStartY = useRef<number | null>(null);
-
-  const handleTouchStart = (e: React.TouchEvent) => {
-    touchStartX.current = e.touches[0].clientX;
-    touchStartY.current = e.touches[0].clientY;
-  };
-
-  const handleTouchEnd = (e: React.TouchEvent) => {
-    if (touchStartX.current === null || touchStartY.current === null) return;
-    const deltaX = touchStartX.current - e.changedTouches[0].clientX;
-    const deltaY = touchStartY.current - e.changedTouches[0].clientY;
-
-    if (Math.abs(deltaX) > 40 && Math.abs(deltaX) > Math.abs(deltaY) * 1.2) {
-      if (deltaX > 0) {
-        flipNext();
-      } else {
-        flipPrev();
-      }
-    }
-    touchStartX.current = null;
-    touchStartY.current = null;
-  };
-
-  // Jump input submit
-  const handleJumpSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    const parsed = parseInt(jumpPageInput, 10);
-    if (!isNaN(parsed) && parsed >= 1 && parsed <= totalPages) {
-      goToPage(parsed - 1);
-    } else {
-      setJumpPageInput(String(currentPage + 1));
-    }
-  };
-
-  // StPageFlip effect for 3D flipbook mode only
-  useEffect(() => {
-    if (viewerMode !== 'flipbook') {
-      if (pageFlipRef.current) {
-        try {
-          pageFlipRef.current.destroy();
-        } catch (e) {
-          // ignore
-        }
-        pageFlipRef.current = null;
-      }
-      return;
-    }
+    let pageFlipInstance: any = null;
 
     const timer = setTimeout(() => {
       if (!bookElementRef.current) return;
@@ -346,59 +286,130 @@ export const FlipbookViewer: React.FC<FlipbookViewerProps> = ({ yearbook, onBack
       }
 
       try {
-        const isWide = window.innerWidth > 900;
-        const baseWidth = isWide ? 600 : 450;
+        const isWide = window.innerWidth > 768;
+        // In landscape spread mode, each page is ~620 wide x 440 high
+        const baseWidth = isWide ? 620 : 420;
         const baseHeight = Math.round(baseWidth / pageAspectRatio);
 
         const pageFlip = new PageFlip(bookElementRef.current, {
           width: baseWidth,
           height: baseHeight,
           size: 'stretch',
-          minWidth: 260,
-          maxWidth: 1000,
-          minHeight: 180,
-          maxHeight: 750,
-          maxShadowOpacity: 0.5,
+          minWidth: 280,
+          maxWidth: 1100,
+          minHeight: 200,
+          maxHeight: 780,
+          maxShadowOpacity: 0.55,
           showCover: true,
           mobileScrollSupport: false,
-          flippingTime: 650,
-          usePortrait: !isWide,
+          flippingTime: 700, // Smooth authentic page flipping animation
+          usePortrait: !isWide, // Double-page spread when screen permits
           startPage: Math.min(currentPage, pages.length - 1),
           drawShadow: true,
           autoSize: true,
           swipeDistance: 25,
           clickEventForward: true,
-          useMouseEvents: true,
+          useMouseEvents: true, // Enables interactive corner dragging & page peel
         });
 
         pageFlip.loadFromHTML(pages);
 
+        // Flipping event: updates page and triggers turn sound
         pageFlip.on('flip', (e: { data: number }) => {
           setCurrentPage(e.data);
           if (soundActive) playPageTurnSound();
         });
 
         pageFlipRef.current = pageFlip;
+        pageFlipInstance = pageFlip;
       } catch (err) {
         console.warn('PageFlip init notice:', err);
       }
-    }, 120);
+    }, 100);
 
-    return () => clearTimeout(timer);
-  }, [viewerMode, pageAspectRatio]);
-
-  // Synchronize PageFlip instance when currentPage changed externally in flipbook mode
-  useEffect(() => {
-    if (viewerMode === 'flipbook' && pageFlipRef.current) {
-      try {
-        if (pageFlipRef.current.getCurrentPageIndex() !== currentPage) {
-          pageFlipRef.current.turnToPage(currentPage);
-        }
-      } catch (e) {
-        // ignore
+    return () => {
+      clearTimeout(timer);
+      if (pageFlipInstance) {
+        try {
+          pageFlipInstance.destroy();
+        } catch (e) {}
       }
+    };
+  }, [viewerMode, isFlipReady, pageAspectRatio, yearbook]);
+
+  // Interactive Flip Navigation Controls
+  const flipNext = useCallback(() => {
+    if (pageFlipRef.current) {
+      pageFlipRef.current.flipNext(); // Triggers 3D flipping animation
+    } else if (currentPage < totalPages - 1) {
+      setCurrentPage((p) => p + 1);
+      if (soundActive) playPageTurnSound();
     }
-  }, [currentPage, viewerMode]);
+  }, [currentPage, totalPages, soundActive]);
+
+  const flipPrev = useCallback(() => {
+    if (pageFlipRef.current) {
+      pageFlipRef.current.flipPrev(); // Triggers 3D flipping animation
+    } else if (currentPage > 0) {
+      setCurrentPage((p) => p - 1);
+      if (soundActive) playPageTurnSound();
+    }
+  }, [currentPage, soundActive]);
+
+  const turnToPageAnimated = useCallback((targetIndex: number) => {
+    const safeTarget = Math.max(0, Math.min(totalPages - 1, targetIndex));
+    if (pageFlipRef.current) {
+      pageFlipRef.current.turnToPage(safeTarget); // Triggers smooth animated turn
+    } else {
+      setCurrentPage(safeTarget);
+      if (soundActive) playPageTurnSound();
+    }
+  }, [totalPages, soundActive]);
+
+  // Select page from Grid mode -> switches to spread and flips to that page
+  const handleSelectPageFromGrid = (targetIndex: number) => {
+    setViewerMode('spread');
+    setTimeout(() => {
+      turnToPageAnimated(targetIndex);
+    }, 150);
+  };
+
+  // Keyboard navigation
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLInputElement) return;
+
+      if (e.key === 'ArrowRight' || e.key === 'PageDown' || e.key === ' ') {
+        e.preventDefault();
+        flipNext();
+      } else if (e.key === 'ArrowLeft' || e.key === 'PageUp') {
+        e.preventDefault();
+        flipPrev();
+      } else if (e.key === 'Home') {
+        e.preventDefault();
+        turnToPageAnimated(0);
+      } else if (e.key === 'End') {
+        e.preventDefault();
+        turnToPageAnimated(totalPages - 1);
+      } else if (e.key === 'Escape') {
+        if (isTocOpen) setIsTocOpen(false);
+        if (viewerMode === 'grid') setViewerMode('spread');
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [flipNext, flipPrev, turnToPageAnimated, totalPages, isTocOpen, viewerMode]);
+
+  // Jump input submit
+  const handleJumpSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const parsed = parseInt(jumpPageInput, 10);
+    if (!isNaN(parsed) && parsed >= 1 && parsed <= totalPages) {
+      turnToPageAnimated(parsed - 1);
+    } else {
+      setJumpPageInput(String(currentPage + 1));
+    }
+  };
 
   return (
     <div className="fixed inset-0 z-50 bg-[#161412] text-amber-50 flex flex-col select-none overflow-hidden font-sans">
@@ -434,29 +445,15 @@ export const FlipbookViewer: React.FC<FlipbookViewerProps> = ({ yearbook, onBack
               <span>•</span>
               {yearbook.year && <span>{yearbook.year} Edition</span>}
               <span>•</span>
-              <span>{yearbook.sizeFormatted}</span>
-              <span className="px-1.5 py-0.2 rounded bg-amber-900/50 text-amber-300 font-mono text-[9px] border border-amber-700/30 hidden md:inline">
-                Landscape Mode
+              <span className="text-amber-300 font-mono">
+                {viewerMode === 'spread' ? 'Landscape Spread Mode' : 'Landscape Grid Mode'}
               </span>
             </div>
           </div>
         </div>
 
-        {/* Center: Mode Selector */}
-        <div className="hidden lg:flex items-center bg-stone-900/90 rounded-xl p-1 border border-amber-900/40">
-          <button
-            onClick={() => setViewerMode('page')}
-            className={`flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-medium transition ${
-              viewerMode === 'page'
-                ? 'bg-amber-600 text-white shadow-xs font-semibold'
-                : 'text-amber-300/70 hover:text-amber-100'
-            }`}
-            title="Single Landscape Page View"
-          >
-            <BookOpen className="w-3.5 h-3.5" />
-            <span>Page View</span>
-          </button>
-
+        {/* Center: NAVIGATION MODE SELECTOR (SPREAD & GRID ONLY) */}
+        <div className="flex items-center bg-stone-900/90 rounded-xl p-1 border border-amber-900/40">
           <button
             onClick={() => setViewerMode('spread')}
             className={`flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-medium transition ${
@@ -464,23 +461,10 @@ export const FlipbookViewer: React.FC<FlipbookViewerProps> = ({ yearbook, onBack
                 ? 'bg-amber-600 text-white shadow-xs font-semibold'
                 : 'text-amber-300/70 hover:text-amber-100'
             }`}
-            title="Two-Page Landscape Spread"
+            title="Landscape Spread Mode with Flipping Animation"
           >
             <Columns className="w-3.5 h-3.5" />
-            <span>2-Page Spread</span>
-          </button>
-
-          <button
-            onClick={() => setViewerMode('flipbook')}
-            className={`flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-medium transition ${
-              viewerMode === 'flipbook'
-                ? 'bg-amber-600 text-white shadow-xs font-semibold'
-                : 'text-amber-300/70 hover:text-amber-100'
-            }`}
-            title="3D Flipbook Animation"
-          >
-            <Sparkles className="w-3.5 h-3.5" />
-            <span>3D Flip</span>
+            <span>Spread View</span>
           </button>
 
           <button
@@ -490,30 +474,30 @@ export const FlipbookViewer: React.FC<FlipbookViewerProps> = ({ yearbook, onBack
                 ? 'bg-amber-600 text-white shadow-xs font-semibold'
                 : 'text-amber-300/70 hover:text-amber-100'
             }`}
-            title="Browse All Pages Grid"
+            title="Grid Mode - Browse all landscape plates"
           >
             <LayoutGrid className="w-3.5 h-3.5" />
-            <span>Browse All</span>
+            <span>Grid View</span>
           </button>
         </div>
 
-        {/* Right Tools: TOC, Thumbnails, Zoom, Sound, Fullscreen */}
+        {/* Right Tools: Share, Index, Zoom, Sound, Fullscreen */}
         <div className="flex items-center gap-1 sm:gap-2">
-          {/* Mobile Mode Switcher Dropdown */}
-          <div className="lg:hidden">
-            <button
-              onClick={() => {
-                const modes: ViewerMode[] = ['page', 'spread', 'flipbook', 'grid'];
-                const nextIdx = (modes.indexOf(viewerMode) + 1) % modes.length;
-                setViewerMode(modes[nextIdx]);
-              }}
-              className="px-2.5 py-1.5 rounded-lg bg-amber-950/80 border border-amber-700/40 text-amber-200 text-xs font-semibold capitalize flex items-center gap-1"
-            >
-              <span>{viewerMode}</span>
-            </button>
-          </div>
+          {/* Share View-Only Link */}
+          <button
+            onClick={handleShare}
+            className={`flex items-center gap-1 p-2 rounded-lg transition text-xs ${
+              copiedShare
+                ? 'bg-emerald-600 text-white'
+                : 'bg-amber-950/60 hover:bg-amber-900 text-amber-200 border border-amber-700/40'
+            }`}
+            title="Share view-only link to this page"
+          >
+            {copiedShare ? <Check className="w-4 h-4" /> : <Share2 className="w-4 h-4" />}
+            <span className="hidden xl:inline">{copiedShare ? 'Copied' : 'Share'}</span>
+          </button>
 
-          {/* Table of contents button */}
+          {/* Table of Contents */}
           <button
             onClick={() => setIsTocOpen(!isTocOpen)}
             className={`p-2 rounded-lg transition text-xs flex items-center gap-1 ${
@@ -524,20 +508,7 @@ export const FlipbookViewer: React.FC<FlipbookViewerProps> = ({ yearbook, onBack
             title="Table of Contents & Index"
           >
             <ListTree className="w-4 h-4" />
-            <span className="hidden xl:inline">Index</span>
-          </button>
-
-          {/* Toggle Thumbnails Strip */}
-          <button
-            onClick={() => setShowThumbnails(!showThumbnails)}
-            className={`p-2 rounded-lg transition text-xs hidden md:flex items-center gap-1 ${
-              showThumbnails
-                ? 'text-amber-300 bg-amber-950/80'
-                : 'text-amber-300/60 hover:text-amber-100 hover:bg-amber-950/40'
-            }`}
-            title="Toggle Landscape Page Strip"
-          >
-            <LayoutGrid className="w-4 h-4" />
+            <span className="hidden md:inline">Index</span>
           </button>
 
           {/* Sound toggle */}
@@ -548,7 +519,7 @@ export const FlipbookViewer: React.FC<FlipbookViewerProps> = ({ yearbook, onBack
                 ? 'text-amber-400 hover:text-amber-200 hover:bg-amber-950/80'
                 : 'text-stone-500 hover:text-stone-300 hover:bg-stone-900'
             }`}
-            title={soundActive ? 'Page audio active' : 'Audio muted'}
+            title={soundActive ? 'Paper flip sound enabled' : 'Sound muted'}
           >
             {soundActive ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
           </button>
@@ -594,35 +565,32 @@ export const FlipbookViewer: React.FC<FlipbookViewerProps> = ({ yearbook, onBack
       {/* Main Archival Stage */}
       <main
         ref={containerRef}
-        onTouchStart={handleTouchStart}
-        onTouchEnd={handleTouchEnd}
-        className="relative flex-1 w-full overflow-hidden flex items-center justify-center p-2 sm:p-4 lg:p-6 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-[#231e1a] via-[#161311] to-[#0c0a09] touch-pan-y"
+        className="relative flex-1 w-full overflow-hidden flex items-center justify-center p-2 sm:p-4 lg:p-6 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-[#231e1a] via-[#161311] to-[#0c0a09] touch-pan-y select-none"
       >
-        {/* Archival Desk Mat Texture */}
+        {/* Archival Desk Mat Texture Overlay */}
         <div className="absolute inset-0 opacity-15 pointer-events-none bg-[radial-gradient(#d97706_1px,transparent_1px)] [background-size:24px_24px]" />
 
-        {/* Orientation & Spread badge */}
+        {/* Viewport orientation badge */}
         <div className="absolute top-3 left-1/2 -translate-x-1/2 z-20 pointer-events-none">
-          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-serif font-bold uppercase tracking-wider bg-black/75 text-amber-200 border border-amber-500/30 backdrop-blur-md shadow-lg">
+          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-serif font-bold uppercase tracking-wider bg-black/80 text-amber-200 border border-amber-500/30 backdrop-blur-md shadow-lg">
             <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
-            {viewerMode === 'page' && `Landscape Page View • Page ${currentPage + 1} of ${totalPages}`}
-            {viewerMode === 'spread' && `Landscape 2-Page Spread • Pages ${currentPage + 1}-${Math.min(currentPage + 2, totalPages)}`}
-            {viewerMode === 'flipbook' && `3D Flipbook Spread • Page ${currentPage + 1}`}
-            {viewerMode === 'grid' && `Browsing All ${totalPages} Landscape Plates`}
+            {viewerMode === 'spread'
+              ? `Landscape Spread • Pages ${currentPage + 1}-${Math.min(currentPage + 2, totalPages)} (Flipping Animation Active)`
+              : `Landscape Grid • All ${totalPages} Plates`}
           </span>
         </div>
 
         {/* Loading overlay for initial buffering */}
         {isLoadingPdf && (
-          <div className="absolute inset-0 z-40 bg-black/80 backdrop-blur-xs flex flex-col items-center justify-center p-6 text-center">
+          <div className="absolute inset-0 z-40 bg-black/85 backdrop-blur-xs flex flex-col items-center justify-center p-6 text-center">
             <div className="w-16 h-16 rounded-2xl bg-amber-900/40 border border-amber-600/40 flex items-center justify-center mb-4">
               <Loader2 className="w-8 h-8 text-amber-400 animate-spin" />
             </div>
             <h3 className="font-serif font-bold text-lg text-amber-100">
-              Streaming Archival Volume
+              Streaming Landscape Archival Volume
             </h3>
             <p className="text-xs text-amber-300/70 max-w-sm mt-1 mb-4 leading-relaxed">
-              Buffering high-resolution landscape plates from Google Drive with native Range streaming.
+              Buffering high-resolution landscape spread from Google Drive with native Range streaming.
             </p>
             {pdfProgress && (
               <div className="w-64 max-w-full">
@@ -667,273 +635,124 @@ export const FlipbookViewer: React.FC<FlipbookViewerProps> = ({ yearbook, onBack
           </div>
         )}
 
-        {/* Floating Prev Button */}
-        <button
-          onClick={flipPrev}
-          disabled={currentPage <= 0}
-          className="absolute left-2 sm:left-6 z-30 w-11 h-11 sm:w-14 sm:h-14 rounded-full bg-black/50 hover:bg-black/80 border border-amber-500/40 text-amber-200 flex items-center justify-center backdrop-blur-md shadow-2xl transition-all disabled:opacity-20 hover:scale-105 active:scale-95"
-          title="Previous Page (Left Arrow or Swipe Right)"
-        >
-          <ChevronLeft className="w-6 h-6 sm:w-8 sm:h-8" />
-        </button>
-
-        {/* Floating Next Button */}
-        <button
-          onClick={flipNext}
-          disabled={currentPage >= totalPages - 1}
-          className="absolute right-2 sm:right-6 z-30 w-11 h-11 sm:w-14 sm:h-14 rounded-full bg-black/50 hover:bg-black/80 border border-amber-500/40 text-amber-200 flex items-center justify-center backdrop-blur-md shadow-2xl transition-all disabled:opacity-20 hover:scale-105 active:scale-95"
-          title="Next Page (Right Arrow or Swipe Left)"
-        >
-          <ChevronRight className="w-6 h-6 sm:w-8 sm:h-8" />
-        </button>
-
-        {/* ============================================================== */}
-        {/* MODE 1: LANDSCAPE PAGE VIEW (PRIMARY & ULTRA-CRISP BROWSING)   */}
-        {/* ============================================================== */}
-        {viewerMode === 'page' && (
-          <div
-            style={{ transform: `scale(${zoomLevel})`, transition: 'transform 0.2s ease-out' }}
-            className="relative flex items-center justify-center max-w-full max-h-full"
-          >
-            <div
-              className="relative rounded-lg shadow-2xl overflow-hidden bg-[#fdfbf7] border-2 border-amber-500/30 transition-all flex items-center justify-center"
-              style={{
-                width: 'min(92vw, 1200px)',
-                aspectRatio: `${pageAspectRatio.toFixed(3)}`,
-                maxHeight: 'min(78vh, 850px)',
-              }}
-            >
-              {/* If Google Drive PDF */}
-              {!yearbook.isSample && yearbook.mimeType === 'application/pdf' && (
-                <div className="w-full h-full relative flex items-center justify-center bg-[#faf8f5]">
-                  {pdfPages[currentPage + 1] ? (
-                    <img
-                      src={pdfPages[currentPage + 1]}
-                      alt={`Yearbook Page ${currentPage + 1}`}
-                      className="w-full h-full object-contain select-none transition-opacity duration-200"
-                    />
-                  ) : (
-                    <div className="w-full h-full flex flex-col items-center justify-center p-8 text-center bg-[#fdfbf7]">
-                      <Loader2 className="w-8 h-8 text-amber-700 animate-spin mb-3" />
-                      <h4 className="font-serif font-bold text-sm text-slate-800">
-                        Rendering Landscape Page {currentPage + 1}
-                      </h4>
-                      <p className="text-xs text-slate-500 mt-1 max-w-xs">
-                        Streaming archival plate in high resolution...
-                      </p>
-                    </div>
-                  )}
-
-                  {/* Watermark / Page Number */}
-                  <div className="absolute bottom-2 right-3 px-2 py-0.5 rounded bg-black/60 backdrop-blur-xs text-[10px] font-mono text-amber-200 border border-amber-500/30 pointer-events-none">
-                    Plate {currentPage + 1} / {totalPages}
-                  </div>
-                </div>
-              )}
-
-              {/* If Image Sequence */}
-              {!yearbook.isSample && yearbook.mimeType === 'collection/image-sequence' && (
-                <div className="w-full h-full relative flex items-center justify-center bg-[#faf8f5]">
-                  {yearbook.imagePages && yearbook.imagePages[currentPage] ? (
-                    <img
-                      src={yearbook.imagePages[currentPage].streamUrl}
-                      alt={yearbook.imagePages[currentPage].name}
-                      className="w-full h-full object-contain select-none"
-                    />
-                  ) : (
-                    <div className="w-full h-full flex items-center justify-center text-slate-500 text-xs">
-                      Page image unavailable
-                    </div>
-                  )}
-                  <div className="absolute bottom-2 right-3 px-2 py-0.5 rounded bg-black/60 backdrop-blur-xs text-[10px] font-mono text-amber-200 border border-amber-500/30">
-                    Plate {currentPage + 1} / {totalPages}
-                  </div>
-                </div>
-              )}
-
-              {/* If Sample Yearbook */}
-              {yearbook.isSample && samplePages[currentPage] && (
-                <div className="w-full h-full p-4 sm:p-8 flex flex-col justify-between overflow-y-auto">
-                  <SamplePageContent page={samplePages[currentPage]} yearbook={yearbook} />
-                  <div className="pt-2 border-t border-amber-900/10 flex items-center justify-between text-[10px] text-slate-500 font-mono">
-                    <span>Bina Bangsa School PIK Archival Sample</span>
-                    <span>Plate {currentPage + 1} of {totalPages}</span>
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* ============================================================== */}
-        {/* MODE 2: LANDSCAPE 2-PAGE SPREAD                                */}
-        {/* ============================================================== */}
+        {/* Floating Flip Buttons (Available in Spread Mode) */}
         {viewerMode === 'spread' && (
-          <div
-            style={{ transform: `scale(${zoomLevel})`, transition: 'transform 0.2s ease-out' }}
-            className="relative flex items-center justify-center max-w-full max-h-full gap-2 sm:gap-4"
-          >
-            {/* Left Page (currentPage + 1) */}
-            <div
-              className="relative rounded-lg shadow-2xl overflow-hidden bg-[#fdfbf7] border-2 border-amber-500/30 flex items-center justify-center"
-              style={{
-                width: 'min(46vw, 650px)',
-                aspectRatio: `${pageAspectRatio.toFixed(3)}`,
-                maxHeight: 'min(78vh, 800px)',
-              }}
+          <>
+            <button
+              onClick={flipPrev}
+              disabled={currentPage <= 0}
+              className="absolute left-2 sm:left-6 z-30 w-11 h-11 sm:w-14 sm:h-14 rounded-full bg-black/55 hover:bg-black/85 border border-amber-500/40 text-amber-200 flex items-center justify-center backdrop-blur-md shadow-2xl transition-all disabled:opacity-20 hover:scale-105 active:scale-95"
+              title="Flip to Previous Page (Left Arrow or Drag Corner)"
             >
-              {!yearbook.isSample && yearbook.mimeType === 'application/pdf' && (
-                <div className="w-full h-full relative flex items-center justify-center bg-[#faf8f5]">
-                  {pdfPages[currentPage + 1] ? (
-                    <img
-                      src={pdfPages[currentPage + 1]}
-                      alt={`Page ${currentPage + 1}`}
-                      className="w-full h-full object-contain select-none"
-                    />
-                  ) : (
-                    <div className="flex flex-col items-center justify-center p-4 text-center">
-                      <Loader2 className="w-6 h-6 text-amber-700 animate-spin mb-2" />
-                      <span className="text-xs font-serif font-bold text-slate-700">
-                        Page {currentPage + 1}
-                      </span>
-                    </div>
-                  )}
-                  <div className="absolute bottom-2 left-3 px-2 py-0.5 rounded bg-black/60 text-[10px] font-mono text-amber-200">
-                    p. {currentPage + 1}
-                  </div>
-                </div>
-              )}
+              <ChevronLeft className="w-6 h-6 sm:w-8 sm:h-8" />
+            </button>
 
-              {yearbook.isSample && samplePages[currentPage] && (
-                <div className="w-full h-full p-4 flex flex-col justify-between overflow-y-auto">
-                  <SamplePageContent page={samplePages[currentPage]} yearbook={yearbook} />
-                  <div className="pt-2 border-t border-amber-900/10 text-[10px] text-slate-400 font-mono text-left">
-                    p. {currentPage + 1}
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Right Page (currentPage + 2) */}
-            <div
-              className="relative rounded-lg shadow-2xl overflow-hidden bg-[#fdfbf7] border-2 border-amber-500/30 flex items-center justify-center"
-              style={{
-                width: 'min(46vw, 650px)',
-                aspectRatio: `${pageAspectRatio.toFixed(3)}`,
-                maxHeight: 'min(78vh, 800px)',
-              }}
+            <button
+              onClick={flipNext}
+              disabled={currentPage >= totalPages - 1}
+              className="absolute right-2 sm:right-6 z-30 w-11 h-11 sm:w-14 sm:h-14 rounded-full bg-black/55 hover:bg-black/85 border border-amber-500/40 text-amber-200 flex items-center justify-center backdrop-blur-md shadow-2xl transition-all disabled:opacity-20 hover:scale-105 active:scale-95"
+              title="Flip to Next Page (Right Arrow or Drag Corner)"
             >
-              {currentPage + 1 < totalPages ? (
-                <>
-                  {!yearbook.isSample && yearbook.mimeType === 'application/pdf' && (
-                    <div className="w-full h-full relative flex items-center justify-center bg-[#faf8f5]">
-                      {pdfPages[currentPage + 2] ? (
-                        <img
-                          src={pdfPages[currentPage + 2]}
-                          alt={`Page ${currentPage + 2}`}
-                          className="w-full h-full object-contain select-none"
-                        />
-                      ) : (
-                        <div className="flex flex-col items-center justify-center p-4 text-center">
-                          <Loader2 className="w-6 h-6 text-amber-700 animate-spin mb-2" />
-                          <span className="text-xs font-serif font-bold text-slate-700">
-                            Page {currentPage + 2}
-                          </span>
-                        </div>
-                      )}
-                      <div className="absolute bottom-2 right-3 px-2 py-0.5 rounded bg-black/60 text-[10px] font-mono text-amber-200">
-                        p. {currentPage + 2}
-                      </div>
-                    </div>
-                  )}
-
-                  {yearbook.isSample && samplePages[currentPage + 1] && (
-                    <div className="w-full h-full p-4 flex flex-col justify-between overflow-y-auto">
-                      <SamplePageContent page={samplePages[currentPage + 1]} yearbook={yearbook} />
-                      <div className="pt-2 border-t border-amber-900/10 text-[10px] text-slate-400 font-mono text-right">
-                        p. {currentPage + 2}
-                      </div>
-                    </div>
-                  )}
-                </>
-              ) : (
-                <div className="w-full h-full flex flex-col items-center justify-center p-6 text-center text-slate-400 font-serif">
-                  <span className="text-sm italic">End of Volume</span>
-                </div>
-              )}
-            </div>
-          </div>
+              <ChevronRight className="w-6 h-6 sm:w-8 sm:h-8" />
+            </button>
+          </>
         )}
 
         {/* ============================================================== */}
-        {/* MODE 3: 3D FLIPBOOK SPREAD                                     */}
+        {/* MODE 1: SPREAD VIEW (WITH FLIPPING ANIMATION)                   */}
         {/* ============================================================== */}
-        {viewerMode === 'flipbook' && (
+        <div
+          style={{ 
+            display: viewerMode === 'spread' ? 'flex' : 'none',
+            transform: `scale(${zoomLevel})`, 
+            transition: 'transform 0.2s ease-out' 
+          }}
+          className="relative max-w-full max-h-full items-center justify-center"
+        >
           <div
-            style={{ transform: `scale(${zoomLevel})`, transition: 'transform 0.2s ease-out' }}
-            className="relative max-w-full max-h-full flex items-center justify-center"
+            ref={bookElementRef}
+            className="flipbook-root shadow-2xl relative cursor-grab active:cursor-grabbing"
+            style={{
+              width: 'min(94vw, 1340px)',
+              aspectRatio: `${(pageAspectRatio * 2).toFixed(3)}`,
+              maxHeight: 'min(80vh, 760px)',
+            }}
           >
-            <div
-              ref={bookElementRef}
-              className="flipbook-root shadow-2xl relative cursor-grab active:cursor-grabbing"
-              style={{
-                width: 'min(94vw, 1260px)',
-                aspectRatio: `${(pageAspectRatio * 2).toFixed(3)}`,
-                maxHeight: 'min(78vh, 750px)',
-              }}
-            >
-              {/* Sample Yearbook Pages */}
-              {yearbook.isSample &&
-                samplePages.map((page, idx) => (
+            {/* Real Drive PDF Pages */}
+            {!yearbook.isSample && yearbook.mimeType === 'application/pdf' &&
+              Array.from({ length: totalPages }).map((_, idx) => {
+                const pNum = idx + 1;
+                const hasImg = Boolean(pdfPages[pNum]);
+
+                return (
                   <div
-                    key={idx}
+                    key={pNum}
                     className="flipbook-page bg-[#fdfbf7] text-slate-800 overflow-hidden relative"
-                    data-density={idx === 0 || idx === samplePages.length - 1 ? 'hard' : 'soft'}
+                    data-density={idx === 0 || idx === totalPages - 1 ? 'hard' : 'soft'}
                   >
-                    <div className="absolute inset-0 p-5 flex flex-col justify-between overflow-y-auto">
-                      <SamplePageContent page={page} yearbook={yearbook} />
+                    <img
+                      data-page-img={pNum}
+                      src={pdfPages[pNum] || ''}
+                      alt={`Page ${pNum}`}
+                      className={`w-full h-full object-contain ${hasImg ? 'opacity-100' : 'opacity-0'} transition-opacity duration-300`}
+                    />
+                    {!hasImg && (
+                      <div
+                        data-loader-page={pNum}
+                        className="absolute inset-0 flex flex-col items-center justify-center p-6 text-center bg-[#faf8f5]"
+                      >
+                        <Loader2 className="w-6 h-6 text-amber-800 animate-spin mb-2" />
+                        <span className="font-serif font-bold text-xs text-amber-950">
+                          Plate {pNum}
+                        </span>
+                        <span className="text-[10px] text-slate-500">Buffering spread...</span>
+                      </div>
+                    )}
+                    <div className="absolute bottom-2 right-3 text-[9px] font-mono text-slate-400 bg-white/70 px-1.5 py-0.5 rounded shadow-2xs">
+                      {pNum}
                     </div>
                   </div>
-                ))}
+                );
+              })}
 
-              {/* Drive PDF Pages */}
-              {!yearbook.isSample &&
-                yearbook.mimeType === 'application/pdf' &&
-                Array.from({ length: totalPages }).map((_, idx) => {
-                  const pNum = idx + 1;
-                  return (
-                    <div
-                      key={pNum}
-                      className="flipbook-page bg-[#fdfbf7] text-slate-800 overflow-hidden relative"
-                      data-density={idx === 0 || idx === totalPages - 1 ? 'hard' : 'soft'}
-                    >
-                      {pdfPages[pNum] ? (
-                        <img
-                          src={pdfPages[pNum]}
-                          alt={`Page ${pNum}`}
-                          className="w-full h-full object-contain"
-                        />
-                      ) : (
-                        <div className="w-full h-full flex flex-col items-center justify-center p-6 text-center bg-amber-50/40">
-                          <Loader2 className="w-6 h-6 text-amber-800 animate-spin mb-2" />
-                          <span className="font-serif font-bold text-xs text-amber-950">
-                            Page {pNum}
-                          </span>
-                          <span className="text-[10px] text-slate-500">Buffering plate...</span>
-                        </div>
-                      )}
-                      <div className="absolute bottom-2 right-3 text-[9px] font-mono text-slate-400">
-                        {pNum}
-                      </div>
-                    </div>
-                  );
-                })}
-            </div>
+            {/* Sample Yearbook Pages */}
+            {yearbook.isSample &&
+              samplePages.map((page, idx) => (
+                <div
+                  key={idx}
+                  className="flipbook-page bg-[#fdfbf7] text-slate-800 overflow-hidden relative"
+                  data-density={idx === 0 || idx === samplePages.length - 1 ? 'hard' : 'soft'}
+                >
+                  <div className="absolute inset-0 p-5 flex flex-col justify-between overflow-y-auto">
+                    <SamplePageContent page={page} yearbook={yearbook} />
+                  </div>
+                </div>
+              ))}
+
+            {/* Image Sequence Pages */}
+            {!yearbook.isSample && yearbook.mimeType === 'collection/image-sequence' &&
+              yearbook.imagePages?.map((imgPage, idx) => (
+                <div
+                  key={imgPage.id}
+                  className="flipbook-page bg-[#fdfbf7] text-slate-800 overflow-hidden relative"
+                  data-density={idx === 0 || idx === yearbook.imagePages!.length - 1 ? 'hard' : 'soft'}
+                >
+                  <img
+                    src={imgPage.streamUrl}
+                    alt={imgPage.name}
+                    className="w-full h-full object-contain"
+                    loading="lazy"
+                  />
+                  <div className="absolute bottom-2 right-3 text-[9px] font-mono text-slate-500 bg-white/70 px-1.5 py-0.5 rounded">
+                    Plate {imgPage.pageNumber}
+                  </div>
+                </div>
+              ))}
           </div>
-        )}
+        </div>
 
         {/* ============================================================== */}
-        {/* MODE 4: ALL PAGES LANDSCAPE GRID BROWSER                       */}
+        {/* MODE 2: GRID VIEW (BROWSE ALL LANDSCAPE PLATES)                */}
         {/* ============================================================== */}
         {viewerMode === 'grid' && (
           <div className="absolute inset-0 z-30 bg-[#141210]/95 backdrop-blur-md p-4 sm:p-8 overflow-y-auto">
@@ -941,18 +760,18 @@ export const FlipbookViewer: React.FC<FlipbookViewerProps> = ({ yearbook, onBack
               <div className="flex items-center justify-between pb-4 mb-6 border-b border-amber-900/40">
                 <div>
                   <h3 className="font-serif font-bold text-lg text-amber-100">
-                    Landscape Page Browser • All {totalPages} Plates
+                    Landscape Plate Grid • All {totalPages} Pages
                   </h3>
                   <p className="text-xs text-amber-400/70 mt-0.5">
-                    Click any page to open immediately in high-resolution Landscape Page View
+                    Click any plate to open in Spread Mode with realistic 3D flipping animation
                   </p>
                 </div>
                 <button
-                  onClick={() => setViewerMode('page')}
+                  onClick={() => setViewerMode('spread')}
                   className="px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-white text-xs font-semibold shadow-md transition flex items-center gap-2"
                 >
-                  <Eye className="w-4 h-4" />
-                  <span>Resume Page View</span>
+                  <Columns className="w-4 h-4" />
+                  <span>Resume Spread View</span>
                 </button>
               </div>
 
@@ -965,10 +784,8 @@ export const FlipbookViewer: React.FC<FlipbookViewerProps> = ({ yearbook, onBack
                   return (
                     <button
                       key={pNum}
-                      onClick={() => {
-                        goToPage(idx);
-                        setViewerMode('page');
-                      }}
+                      onClick={() => handleSelectPageFromGrid(idx)}
+                      onMouseEnter={() => renderThumbnail(pNum)}
                       className={`group relative flex flex-col rounded-xl overflow-hidden transition-all text-left border ${
                         isCurrent
                           ? 'border-amber-400 ring-2 ring-amber-400/50 scale-[1.02] shadow-xl'
@@ -1000,7 +817,7 @@ export const FlipbookViewer: React.FC<FlipbookViewerProps> = ({ yearbook, onBack
                       </div>
                       <div className="p-2 flex items-center justify-between text-[11px] bg-[#1a1715]">
                         <span className="font-serif text-amber-100 truncate">
-                          {pNum === 1 ? 'Cover' : pNum === totalPages ? 'Back' : `Plate ${pNum}`}
+                          {pNum === 1 ? 'Front Cover' : pNum === totalPages ? 'Back Cover' : `Plate ${pNum}`}
                         </span>
                         {isCurrent && (
                           <span className="text-[9px] uppercase font-bold text-amber-400 font-mono">
@@ -1038,8 +855,9 @@ export const FlipbookViewer: React.FC<FlipbookViewerProps> = ({ yearbook, onBack
                   <button
                     key={idx}
                     onClick={() => {
-                      goToPage(idx);
+                      turnToPageAnimated(idx);
                       setIsTocOpen(false);
+                      if (viewerMode === 'grid') setViewerMode('spread');
                     }}
                     className={`w-full flex items-center justify-between p-2 rounded-lg text-left transition ${
                       currentPage === idx
@@ -1058,8 +876,9 @@ export const FlipbookViewer: React.FC<FlipbookViewerProps> = ({ yearbook, onBack
                   <button
                     key={idx}
                     onClick={() => {
-                      goToPage(idx);
+                      turnToPageAnimated(idx);
                       setIsTocOpen(false);
+                      if (viewerMode === 'grid') setViewerMode('spread');
                     }}
                     className={`w-full flex items-center justify-between p-2 rounded-lg text-left transition ${
                       currentPage === idx
@@ -1067,7 +886,7 @@ export const FlipbookViewer: React.FC<FlipbookViewerProps> = ({ yearbook, onBack
                         : 'hover:bg-amber-100 text-slate-700'
                     }`}
                   >
-                    <span>{idx === 0 ? 'Front Cover' : idx === totalPages - 1 ? 'Back Cover' : `Landscape Plate ${idx + 1}`}</span>
+                    <span>{idx === 0 ? 'Front Cover' : idx === totalPages - 1 ? 'Back Cover' : `Plate ${idx + 1}`}</span>
                     <span className="font-mono text-[10px] opacity-75 shrink-0 ml-2">
                       p. {idx + 1}
                     </span>
@@ -1079,59 +898,7 @@ export const FlipbookViewer: React.FC<FlipbookViewerProps> = ({ yearbook, onBack
         )}
       </main>
 
-      {/* ============================================================== */}
-      {/* HORIZONTAL LANDSCAPE THUMBNAIL STRIP (FOR QUICK BROWSING)       */}
-      {/* ============================================================== */}
-      {showThumbnails && viewerMode !== 'grid' && (
-        <div className="h-20 bg-[#12100e] border-t border-amber-900/30 px-3 py-1.5 flex items-center shrink-0 z-20">
-          <div
-            ref={thumbnailStripRef}
-            className="w-full flex items-center gap-2 overflow-x-auto py-1 scrollbar-thin scrollbar-thumb-amber-700/50 scrollbar-track-stone-900"
-          >
-            {Array.from({ length: totalPages }).map((_, idx) => {
-              const pNum = idx + 1;
-              const isCurrent = currentPage === idx;
-              const thumb = pdfThumbnails[pNum] || pdfPages[pNum];
-
-              return (
-                <button
-                  key={pNum}
-                  data-thumb-page={idx}
-                  onClick={() => goToPage(idx)}
-                  className={`relative shrink-0 rounded-md overflow-hidden transition-all border ${
-                    isCurrent
-                      ? 'border-amber-400 ring-2 ring-amber-400/80 scale-105 shadow-md'
-                      : 'border-amber-900/40 opacity-70 hover:opacity-100 hover:border-amber-500/60'
-                  }`}
-                  style={{
-                    height: '56px',
-                    aspectRatio: `${pageAspectRatio.toFixed(3)}`,
-                  }}
-                  title={`Jump to Page ${pNum}`}
-                >
-                  {thumb ? (
-                    <img
-                      src={thumb}
-                      alt={`Thumb ${pNum}`}
-                      className="w-full h-full object-cover bg-white"
-                      loading="lazy"
-                    />
-                  ) : (
-                    <div className="w-full h-full bg-stone-800 flex items-center justify-center text-[9px] font-mono text-amber-200/50">
-                      {pNum}
-                    </div>
-                  )}
-                  <span className="absolute bottom-0 right-0 px-1 py-0.2 rounded-tl bg-black/80 text-[8px] font-mono text-amber-200">
-                    {pNum}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
-      {/* Bottom Controls & Page Scrubber */}
+      {/* Bottom Controls & Page Scrubber with Animated Flip */}
       <footer className="h-14 bg-[#0f0e0d]/95 border-t border-amber-900/30 px-3 sm:px-6 flex items-center justify-between shrink-0 z-30 shadow-lg">
         {/* Previous page button */}
         <button
@@ -1140,7 +907,7 @@ export const FlipbookViewer: React.FC<FlipbookViewerProps> = ({ yearbook, onBack
           className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-amber-950/60 hover:bg-amber-900 text-amber-200 border border-amber-700/40 text-xs font-medium transition disabled:opacity-30 shrink-0"
         >
           <ChevronLeft className="w-4 h-4" />
-          <span className="hidden sm:inline">Previous</span>
+          <span className="hidden sm:inline">Flip Prev</span>
         </button>
 
         {/* Center: Scrubber & Page Indicator & Jump Input */}
@@ -1150,7 +917,7 @@ export const FlipbookViewer: React.FC<FlipbookViewerProps> = ({ yearbook, onBack
             min={0}
             max={Math.max(0, totalPages - 1)}
             value={currentPage}
-            onChange={(e) => goToPage(parseInt(e.target.value, 10))}
+            onChange={(e) => turnToPageAnimated(parseInt(e.target.value, 10))}
             className="w-full accent-amber-500 cursor-pointer h-1.5 bg-stone-800 rounded-lg"
           />
 
@@ -1172,7 +939,7 @@ export const FlipbookViewer: React.FC<FlipbookViewerProps> = ({ yearbook, onBack
           disabled={currentPage >= totalPages - 1}
           className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-amber-950/60 hover:bg-amber-900 text-amber-200 border border-amber-700/40 text-xs font-medium transition disabled:opacity-30 shrink-0"
         >
-          <span className="hidden sm:inline">Next</span>
+          <span className="hidden sm:inline">Flip Next</span>
           <ChevronRight className="w-4 h-4" />
         </button>
       </footer>

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { 
   BookOpen, 
   Search, 
@@ -9,9 +9,13 @@ import {
   Library, 
   LayoutGrid, 
   RefreshCw,
-  Sparkles
+  Sparkles,
+  Share2,
+  ShieldCheck,
+  Lock,
+  Check,
+  Eye
 } from 'lucide-react';
-import { PWAInstallButton } from './PWAInstallButton';
 import { DriveStatus } from '../types/yearbook';
 
 interface HeaderProps {
@@ -25,12 +29,14 @@ interface HeaderProps {
   onViewModeChange: (mode: 'grid' | 'shelf') => void;
   soundEnabled: boolean;
   onToggleSound: () => void;
-  driveStatus: DriveStatus | null;
-  onOpenDriveModal: () => void;
-  secondsUntilNextPoll: number;
-  onForceRefresh: () => void;
-  isRefreshing: boolean;
+  isAdmin: boolean;
+  onOpenAdminModal: () => void;
+  onShareArchive: () => void;
   decades: string[];
+  driveStatus?: DriveStatus | null;
+  onOpenDriveModal?: () => void;
+  onForceRefresh?: () => void;
+  isRefreshing?: boolean;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -44,22 +50,32 @@ export const Header: React.FC<HeaderProps> = ({
   onViewModeChange,
   soundEnabled,
   onToggleSound,
+  isAdmin,
+  onOpenAdminModal,
+  onShareArchive,
+  decades,
   driveStatus,
   onOpenDriveModal,
-  secondsUntilNextPoll,
   onForceRefresh,
-  isRefreshing,
-  decades,
+  isRefreshing = false,
 }) => {
+  const [copiedShare, setCopiedShare] = useState<boolean>(false);
+
+  const handleShareClick = () => {
+    onShareArchive();
+    setCopiedShare(true);
+    setTimeout(() => setCopiedShare(false), 2000);
+  };
+
   const isLiveDrive = driveStatus?.configured && !driveStatus?.error;
 
   return (
     <header className="sticky top-0 z-40 bg-[#fdfbf7]/95 backdrop-blur-md border-b border-amber-900/15 shadow-xs transition-all">
-      {/* Top Banner with Crest, Brand & Actions */}
+      {/* Top Banner with Brand, Admin/Share actions */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3.5 flex flex-col md:flex-row md:items-center justify-between gap-4">
-        {/* Brand & Emblem */}
+        {/* Brand & Crest */}
         <div className="flex items-center gap-3.5">
-          <div className="relative shrink-0 flex items-center justify-center p-1 rounded-xl bg-white/70 border border-teal-900/10 shadow-xs">
+          <div className="relative shrink-0 flex items-center justify-center p-1 rounded-xl bg-white/80 border border-teal-900/10 shadow-xs">
             <img
               src="/assets/aistudio/Logo_Bina_Bangsa_School_Vertikal_RGB-03_4d2a2b49.png"
               alt="Bina Bangsa School Logo"
@@ -71,43 +87,81 @@ export const Header: React.FC<HeaderProps> = ({
               <h1 className="font-serif font-black text-lg sm:text-xl lg:text-2xl text-slate-900 tracking-tight leading-snug">
                 Bina Bangsa School-Pantai Indah Kapuk
               </h1>
-              <span className="hidden sm:inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider bg-amber-100 text-amber-900 px-2 py-0.5 rounded-full border border-amber-300/60 shrink-0">
+              <span className="hidden sm:inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider bg-amber-100 text-amber-900 px-2.5 py-0.5 rounded-full border border-amber-300/60 shrink-0">
                 <Sparkles className="w-2.5 h-2.5 text-amber-700" /> Archive
               </span>
             </div>
-            <p className="text-xs text-slate-500 font-serif italic">
-              Official Digital Yearbook Archive • Pantai Indah Kapuk Campus
+            <p className="text-xs text-slate-500 font-serif italic flex items-center gap-2">
+              <span>Official Digital Yearbook Archive • Pantai Indah Kapuk Campus</span>
+              <span className="inline-block w-1 h-1 rounded-full bg-slate-300" />
+              <span className="text-amber-800 font-medium not-italic text-[11px] flex items-center gap-1">
+                <Eye className="w-3 h-3 text-amber-700" /> Public View Only
+              </span>
             </p>
           </div>
         </div>
 
-        {/* Status badges, Sound, PWA, Drive Sync */}
+        {/* Right Action Tools */}
         <div className="flex items-center flex-wrap gap-2.5 self-start md:self-auto">
-          {/* Drive status button */}
+          {/* Share Archive Button (View-Only public link) */}
           <button
-            onClick={onOpenDriveModal}
+            onClick={handleShareClick}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border transition shadow-2xs ${
-              isLiveDrive
-                ? 'bg-emerald-50 text-emerald-900 border-emerald-300/80 hover:bg-emerald-100'
-                : 'bg-amber-50 text-amber-900 border-amber-300/80 hover:bg-amber-100'
+              copiedShare
+                ? 'bg-emerald-600 text-white border-emerald-600'
+                : 'bg-white border-amber-900/20 text-slate-700 hover:bg-amber-50 hover:text-slate-900'
             }`}
-            title="Click to view Google Drive connection details & polling timer"
+            title="Copy public view-only link to share with students and parents"
           >
-            <FolderSync className={`w-3.5 h-3.5 ${isLiveDrive ? 'text-emerald-700' : 'text-amber-700'}`} />
-            <span>{isLiveDrive ? 'Drive Sync' : 'Demo Mode'}</span>
-            <span className="w-1.5 h-1.5 rounded-full bg-current opacity-80" />
-            <span className="text-[10px] opacity-75">{secondsUntilNextPoll}s</span>
+            {copiedShare ? <Check className="w-3.5 h-3.5" /> : <Share2 className="w-3.5 h-3.5 text-amber-800" />}
+            <span>{copiedShare ? 'Link Copied!' : 'Share Archive'}</span>
           </button>
 
-          {/* Manual refresh button */}
-          <button
-            onClick={onForceRefresh}
-            disabled={isRefreshing}
-            className="p-1.5 rounded-lg border border-amber-900/15 bg-white text-slate-700 hover:bg-amber-50 hover:text-slate-900 transition disabled:opacity-40"
-            title="Force refresh from Google Drive"
-          >
-            <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin text-amber-700' : ''}`} />
-          </button>
+          {/* If ADMIN is logged in: show update and drive controls */}
+          {isAdmin ? (
+            <>
+              {onForceRefresh && (
+                <button
+                  onClick={onForceRefresh}
+                  disabled={isRefreshing}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-amber-800 hover:bg-amber-900 text-white shadow-2xs transition disabled:opacity-40"
+                  title="Force re-sync and update archive from Google Drive"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin' : ''}`} />
+                  <span>{isRefreshing ? 'Syncing...' : 'Update Archive'}</span>
+                </button>
+              )}
+
+              {onOpenDriveModal && (
+                <button
+                  onClick={onOpenDriveModal}
+                  className="p-1.5 rounded-lg border border-emerald-300 bg-emerald-50 text-emerald-800 hover:bg-emerald-100 transition"
+                  title="Google Drive telemetry"
+                >
+                  <FolderSync className="w-4 h-4 text-emerald-700" />
+                </button>
+              )}
+
+              <button
+                onClick={onOpenAdminModal}
+                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-bold bg-emerald-100/90 text-emerald-950 border border-emerald-300 transition shadow-2xs"
+                title="Admin session active"
+              >
+                <ShieldCheck className="w-4 h-4 text-emerald-700" />
+                <span className="hidden sm:inline">Admin Mode</span>
+              </button>
+            </>
+          ) : (
+            /* If PUBLIC viewer: show subtle admin access unlock */
+            <button
+              onClick={onOpenAdminModal}
+              className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium border border-amber-900/15 bg-white/80 text-slate-600 hover:bg-amber-50 hover:text-slate-900 transition"
+              title="Admin Portal (For archive managers to update Google Drive records)"
+            >
+              <Lock className="w-3.5 h-3.5 text-slate-500" />
+              <span className="hidden sm:inline">Admin</span>
+            </button>
+          )}
 
           {/* Sound toggle */}
           <button
@@ -122,9 +176,6 @@ export const Header: React.FC<HeaderProps> = ({
             {soundEnabled ? <Volume2 className="w-4 h-4 text-amber-800" /> : <VolumeX className="w-4 h-4" />}
             <span className="hidden sm:inline">{soundEnabled ? 'Audio' : 'Mute'}</span>
           </button>
-
-          {/* PWA Install Button */}
-          <PWAInstallButton />
         </div>
       </div>
 
@@ -153,7 +204,7 @@ export const Header: React.FC<HeaderProps> = ({
 
           {/* Filters, Sort, and View Mode Toggle */}
           <div className="flex items-center flex-wrap gap-2 text-xs">
-            {/* Decade Filter */}
+            {/* Era Filter */}
             <div className="flex items-center gap-1.5 bg-white px-2 py-1 rounded-lg border border-amber-900/15">
               <span className="text-slate-500 font-medium">Era:</span>
               <select
@@ -185,7 +236,7 @@ export const Header: React.FC<HeaderProps> = ({
               </select>
             </div>
 
-            {/* View Mode Toggle: Grid vs Bookshelf */}
+            {/* View Mode Toggle: Grid vs Shelf */}
             <div className="flex items-center bg-white rounded-lg border border-amber-900/15 p-0.5 ml-auto md:ml-0">
               <button
                 onClick={() => onViewModeChange('grid')}
