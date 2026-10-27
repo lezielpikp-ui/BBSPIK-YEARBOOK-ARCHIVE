@@ -243,6 +243,18 @@ export const AdminModal: React.FC<AdminModalProps> = ({
                   <span>Web app successfully synchronized with Google Drive!</span>
                 </div>
               )}
+
+              {/* Permanent Drive Source Info */}
+              <div className="pt-2 border-t border-amber-100 flex items-center justify-between text-xs">
+                <div className="flex items-center gap-1.5 text-slate-600">
+                  <Folder className="w-3.5 h-3.5 text-amber-800" />
+                  <span className="font-semibold text-slate-800">Permanent Source:</span>
+                  <code className="bg-amber-100/70 px-1.5 py-0.5 rounded text-[11px] font-mono text-amber-950 font-bold">1t7nywiFhuJSq97UznMrxBWOC36vG-tzZ</code>
+                </div>
+                <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-bold">
+                  Active
+                </span>
+              </div>
             </div>
 
             {/* ACTION 2: Share to Public (View-Only) */}

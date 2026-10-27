@@ -301,12 +301,18 @@ function formatBytes(bytes: number): string {
   return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`;
 }
 
-function getFolderId(): string | undefined {
-  return (process.env.GOOGLE_DRIVE_FOLDER_ID || process.env.GOOGLE_DRIVE_FOLDER)?.trim();
+// Permanent Google Drive Source Folder (Bina Bangsa School PIK Yearbooks)
+const PERMANENT_DRIVE_FOLDER_ID = '1t7nywiFhuJSq97UznMrxBWOC36vG-tzZ';
+const PERMANENT_DRIVE_API_KEY = 'AIzaSyD6XIv17-DG9Lh862aI4H_c4GY2RdJf3MQ';
+
+function getFolderId(): string {
+  const envFolder = (process.env.GOOGLE_DRIVE_FOLDER_ID || process.env.GOOGLE_DRIVE_FOLDER)?.trim();
+  return envFolder || PERMANENT_DRIVE_FOLDER_ID;
 }
 
-function getApiKey(): string | undefined {
-  return process.env.GOOGLE_DRIVE_API_KEY?.trim();
+function getApiKey(): string {
+  const envKey = process.env.GOOGLE_DRIVE_API_KEY?.trim();
+  return envKey || PERMANENT_DRIVE_API_KEY;
 }
 
 function formatDriveItem(item: any, parentFolderId: string, folderName?: string) {

@@ -169,8 +169,11 @@ export const DriveStatusModal: React.FC<DriveStatusModalProps> = ({
                 <div className="flex items-center gap-2">
                   <Folder className="w-4 h-4 text-amber-700 shrink-0" />
                   <div>
-                    <span className="font-mono font-bold text-slate-800">GOOGLE_DRIVE_FOLDER_ID</span>
-                    <span className="text-[11px] text-slate-500 block">1t7nywiFhuJSq97UznMrxBWOC36vG-tzZ</span>
+                    <div className="flex items-center gap-1.5">
+                      <span className="font-mono font-bold text-slate-800">PERMANENT_DRIVE_FOLDER_ID</span>
+                      <span className="px-1.5 py-0.2 rounded bg-emerald-100 text-emerald-800 text-[9px] font-bold uppercase tracking-wider">Permanent Source</span>
+                    </div>
+                    <span className="text-[11px] font-mono text-slate-600 block">1t7nywiFhuJSq97UznMrxBWOC36vG-tzZ</span>
                   </div>
                 </div>
                 <button
